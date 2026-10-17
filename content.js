@@ -16,6 +16,10 @@
   let speechGeneration = 0;
   let speechQueue = [];
   let speechBusy = false;
+  let asrRunning = false;
+  let asrRecorder = null;
+  let asrStream = null;
+  let asrVideo = null;
   let panel = null;
   let statusEl = null;
   let button = null;
@@ -43,7 +47,7 @@
       <button class="ytx-main">▶ Включить озвучку</button>
       <div class="ytx-volume"><label for="ytx-volume">Громкость перевода</label><input id="ytx-volume" type="range" min="0" max="1" step=".05" value=".9"></div>
       <div class="ytx-status" role="status">Готов к запуску</div>
-      <small class="ytx-note">Используются доступные субтитры YouTube. Перевод и синтез речи выполняются онлайн/браузером.</small>`;
+      <small class="ytx-note">Если субтитров нет, пробуем локально распознать звук Whisper. Модель скачивается при первом запуске; аудио обрабатывается в браузере.</small>`;
     const style = document.createElement("style");
     style.textContent = `
       #youtranslate-panel{position:fixed;z-index:2147483647;right:22px;bottom:90px;width:260px;padding:16px;border:1px solid #ffffff38;border-radius:20px;background:rgba(20,22,29,.88);backdrop-filter:blur(24px) saturate(160%);box-shadow:0 18px 55px #0007;color:#f7f7fb;font:13px/1.4 system-ui,-apple-system,sans-serif}
@@ -298,18 +302,167 @@
     }, 100);
   }
 
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function captureAudioChunk(stream, durationMs = 6500) {
+    const audioOnly = new MediaStream(stream.getAudioTracks());
+    const preferred = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"];
+    const mimeType = preferred.find(type => MediaRecorder.isTypeSupported(type));
+    const recorder = mimeType ? new MediaRecorder(audioOnly, { mimeType }) : new MediaRecorder(audioOnly);
+    asrRecorder = recorder;
+    const chunks = [];
+    const stopped = new Promise((resolve, reject) => {
+      recorder.ondataavailable = event => { if (event.data?.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error("Firefox не смог записать звук видео."));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+    });
+    recorder.start();
+    await wait(durationMs);
+    if (recorder.state !== "inactive") recorder.stop();
+    const blob = await stopped;
+    if (asrRecorder === recorder) asrRecorder = null;
+    if (!blob.size) throw new Error("Не удалось получить аудиоданные из видеоплеера.");
+    return blob;
+  }
+
+  async function blobToMono16k(blob) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("В этом Firefox недоступна обработка аудио.");
+    const context = new AudioContextClass();
+    try {
+      const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+      const length = Math.floor(decoded.length * 16000 / decoded.sampleRate);
+      if (length < 16000) throw new Error("Слишком короткий аудиофрагмент.");
+      const mono = new Float32Array(length);
+      const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i));
+      const ratio = decoded.sampleRate / 16000;
+      for (let i = 0; i < length; i++) {
+        const position = i * ratio;
+        const left = Math.floor(position);
+        const right = Math.min(left + 1, decoded.length - 1);
+        const fraction = position - left;
+        let sample = 0;
+        for (const channel of channels) sample += channel[left] * (1 - fraction) + channel[right] * fraction;
+        mono[i] = sample / channels.length;
+      }
+      return mono;
+    } finally {
+      await context.close().catch(() => {});
+    }
+  }
+
+  function speakLocalText(text) {
+    return new Promise(resolve => {
+      if (!text || !("speechSynthesis" in window) || !enabled) return resolve();
+      speechSynthesis.cancel();
+      const speech = new SpeechSynthesisUtterance(text);
+      speech.lang = settings.targetLanguage;
+      speech.volume = Math.max(0, Math.min(1, settings.volume));
+      speech.rate = settings.rate || 1;
+      const base = settings.targetLanguage.split("-")[0].toLowerCase();
+      const voices = speechSynthesis.getVoices();
+      const voice = voices.find(v => v.lang.toLowerCase() === settings.targetLanguage.toLowerCase())
+        || voices.find(v => v.lang.toLowerCase().startsWith(base));
+      if (voice) speech.voice = voice;
+      speech.onend = () => resolve();
+      speech.onerror = () => resolve();
+      speechSynthesis.speak(speech);
+    });
+  }
+
+  async function startLocalASR(video) {
+    if (!video) throw new Error("Видеоплеер не найден.");
+    asrVideo = video;
+    asrRunning = true;
+    setStatus("Субтитров нет. Загружаю локальную модель Whisper…");
+    try {
+      const moduleUrl = browser.runtime.getURL("asr-engine.js");
+      const asrModule = await import(moduleUrl);
+      if (!enabled || !asrRunning) return;
+      const capture = video.captureStream || video.mozCaptureStream;
+      if (!capture) throw new Error("Эта версия Firefox не поддерживает захват аудио из видеоплеера.");
+      asrStream = capture.call(video);
+      if (!asrStream.getAudioTracks().length) throw new Error("Firefox не предоставил аудиодорожку для распознавания.");
+      setStatus("Локальная модель готова. Запускаю распознавание речи…");
+
+      while (enabled && asrRunning && !video.ended) {
+        if (video.paused || document.hidden) {
+          await wait(250);
+          continue;
+        }
+
+        const segmentStart = video.currentTime;
+        let blob;
+        try {
+          blob = await captureAudioChunk(asrStream, 6500);
+        } catch (error) {
+          if (!enabled || !asrRunning) break;
+          throw error;
+        }
+        video.pause();
+        if (!enabled || !asrRunning) break;
+
+        try {
+          const audio = await blobToMono16k(blob);
+          setStatus("Распознаю речь локально…");
+          const transcript = await asrModule.transcribeAudio(audio, percent => {
+            setStatus(percent >= 100 ? "Модель загружена. Распознаю речь…" : `Загрузка модели Whisper: ${percent}%`);
+          });
+          if (transcript && enabled && asrRunning) {
+            setStatus("Перевожу распознанную речь…");
+            const translated = await translate(transcript, "auto");
+            if (translated && enabled && asrRunning) {
+              setStatus("Озвучиваю перевод…");
+              await speakLocalText(translated);
+            }
+          } else if (enabled && asrRunning) {
+            setStatus("Речь не распознана в этом фрагменте. Продолжаю…");
+          }
+        } catch (error) {
+          console.warn("[YouTranslate] local ASR segment failed", error);
+          setStatus("Не удалось распознать фрагмент. Продолжаю со следующим…");
+        }
+
+        if (enabled && asrRunning && !video.ended) {
+          try { await video.play(); } catch (_) {
+            setStatus("Нажми воспроизведение видео, чтобы продолжить распознавание.");
+            break;
+          }
+          await wait(150);
+        }
+      }
+    } catch (error) {
+      console.warn("[YouTranslate] local ASR unavailable", error);
+      if (enabled) {
+        enabled = false;
+        if (button) button.textContent = "▶ Включить озвучку";
+        setStatus(error?.message || "Локальное распознавание не удалось запустить.");
+      }
+    } finally {
+      asrRunning = false;
+      if (asrRecorder && asrRecorder.state !== "inactive") {
+        try { asrRecorder.stop(); } catch (_) {}
+      }
+      asrRecorder = null;
+      if (asrStream) asrStream.getTracks().forEach(track => track.stop());
+      asrStream = null;
+      if (asrVideo === video) asrVideo = null;
+    }
+  }
+
   async function startSpeaking() {
     if (enabled) return;
     enabled = true;
     if (button) button.textContent = "Ⅱ Остановить озвучку";
     const ok = await loadCaptions();
     if (!enabled) return;
+    activeVideo = document.querySelector("video");
     if (!ok) {
-      enabled = false;
-      if (button) button.textContent = "▶ Включить озвучку";
+      await startLocalASR(activeVideo);
       return;
     }
-    activeVideo = document.querySelector("video");
     if (!activeVideo) {
       setStatus("Видеоплеер не найден.");
       enabled = false;
@@ -328,6 +481,11 @@
     previousWallTime = null;
     lastIndex = -1;
     cancelCurrentSpeech();
+    asrRunning = false;
+    if (asrRecorder && asrRecorder.state !== "inactive") {
+      try { asrRecorder.stop(); } catch (_) {}
+    }
+    if (asrVideo?.paused && !asrVideo.ended) asrVideo.play().catch(() => {});
     if (button) button.textContent = "▶ Включить озвучку";
     setStatus("Озвучка остановлена.");
   }
