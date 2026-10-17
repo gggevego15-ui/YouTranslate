@@ -25,6 +25,7 @@
   let statusEl = null;
   let button = null;
   let loadToken = 0;
+  let syncVideoId = "";
 
   const languages = [
     ["ru","Русский"],["en","English"],["es","Español"],["de","Deutsch"],
@@ -365,10 +366,33 @@
     if (poll) clearInterval(poll);
     previousVideoTime = null;
     previousWallTime = null;
+    syncVideoId = currentVideoId();
     poll = setInterval(() => {
       if (!enabled) return;
       const video = document.querySelector("video");
       if (!video) return;
+
+      // Shorts can replace the displayed clip while reusing the same <video>
+      // element, so element identity alone is not enough to detect navigation.
+      const visibleVideoId = currentVideoId();
+      if (visibleVideoId && visibleVideoId !== syncVideoId) {
+        syncVideoId = visibleVideoId;
+        captions = [];
+        lastIndex = -1;
+        previousVideoTime = null;
+        previousWallTime = null;
+        cancelCurrentSpeech();
+        const token = loadToken + 1;
+        loadCaptions().then(result => {
+          if (!enabled || currentVideoId() !== visibleVideoId || token !== loadToken) return;
+          if (result === "missing") startLocalASR(video);
+        }).catch(error => {
+          console.warn("[YouTranslate] subtitle reload after navigation failed", error);
+          setStatus("Не удалось загрузить субтитры нового Shorts. Попробуй ещё раз.");
+        });
+        setStatus("Обнаружен новый Shorts — загружаю его субтитры…");
+        return;
+      }
 
       if (video !== activeVideo) {
         activeVideo = video;
