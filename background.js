@@ -20,8 +20,16 @@ async function fetchCaptionData(rawUrl) {
   return response.json();
 }
 
+const translationCache = new Map();
+const translationInFlight = new Map();
+
 async function translateText(text, source, target) {
   if (typeof text !== "string" || !text.trim()) return "";
+  const normalized = text.trim();
+  const cacheKey = JSON.stringify([source || "auto", target || "ru", normalized]);
+  if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
+  if (translationInFlight.has(cacheKey)) return translationInFlight.get(cacheKey);
+  const request = (async () => {
   const url = new URL("https://translate.googleapis.com/translate_a/single");
   url.searchParams.set("client", "gtx");
   url.searchParams.set("sl", source || "auto");
@@ -31,5 +39,12 @@ async function translateText(text, source, target) {
   const response = await fetch(url.toString());
   if (!response.ok) throw new Error("Сервис перевода ответил ошибкой HTTP " + response.status);
   const data = await response.json();
-  return (data[0] || []).map(part => part[0] || "").join("").trim() || text;
+  const translated = (data[0] || []).map(part => part[0] || "").join("").trim() || text;
+  translationCache.set(cacheKey, translated);
+  if (translationCache.size > 2000) translationCache.delete(translationCache.keys().next().value);
+  return translated;
+  })();
+  translationInFlight.set(cacheKey, request);
+  try { return await request; }
+  finally { translationInFlight.delete(cacheKey); }
 }
