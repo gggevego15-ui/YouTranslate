@@ -22,6 +22,9 @@ jobs:
           test -f popup.html
           test -f popup.js
           node -e "const m=require('./manifest.json'); if(m.manifest_version!==3 || !m.content_scripts || !m.background) process.exit(1); console.log('Manifest OK:', m.name, m.version)"
+          node --check content.js
+          node --check background.js
+          node --check popup.js
       - name: Create ZIP package
         run: |
           mkdir -p dist
