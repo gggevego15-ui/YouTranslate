@@ -96,10 +96,14 @@
     const response = playerResponse();
     const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!tracks?.length) {
-      setStatus("У этого видео не найдены субтитры. Включи субтитры YouTube и попробуй снова.");
+      setStatus("YouTube не предоставил дорожку субтитров. В этой версии нет отдельного ASR-движка для распознавания аудио напрямую.");
       return false;
     }
-    const chosen = tracks.find(t => t.languageCode === settings.targetLanguage)
+    // Prefer captions in the requested language, including YouTube auto-generated (ASR) tracks.
+    // If that language is unavailable, prefer any ASR track before falling back to English.
+    const chosen = tracks.find(t => t.languageCode === settings.targetLanguage && t.kind === "asr")
+      || tracks.find(t => t.languageCode === settings.targetLanguage)
+      || tracks.find(t => t.kind === "asr")
       || tracks.find(t => t.languageCode === "en")
       || tracks[0];
     setStatus("Загружаю субтитры…");
@@ -115,7 +119,8 @@
           text: e.segs.map(s => s.utf8 || "").join("").replace(/\s+/g, " ").trim(), translated: "" }))
         .filter(c => c.text && !/^\[.*\]$/.test(c.text));
       if (!captions.length) throw new Error("Нет текстовых реплик");
-      setStatus(`Субтитры загружены: ${captions.length} реплик. Перевожу…`);
+      const trackKind = chosen.kind === "asr" ? "автоматическое распознавание YouTube" : "субтитры YouTube";
+      setStatus(`Загружено (${trackKind}): ${captions.length} реплик. Перевожу…`);
       // Translate in small batches to avoid oversized requests.
       for (let i = 0; i < captions.length; i += 8) {
         if (token !== loadToken) return false;
