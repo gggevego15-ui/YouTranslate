@@ -62,7 +62,11 @@
     lang.onchange = async () => {
       settings.targetLanguage = lang.value;
       await browser.storage.local.set({ targetLanguage: lang.value });
-      if (enabled) { await loadCaptions(); }
+      if (enabled) {
+        cancelCurrentSpeech();
+        await loadCaptions();
+        lastIndex = -1;
+      }
     };
     volume.oninput = async () => {
       settings.volume = Number(volume.value);
@@ -284,7 +288,6 @@
           const caption = captions[index];
           const lateness = currentTime - caption.start;
           if (lateness <= Math.max(0.9, caption.duration * 0.65)) speakCaption(index);
-          else cancelCurrentSpeech();
         }
       }
     }, 100);
