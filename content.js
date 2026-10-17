@@ -101,16 +101,26 @@
 
   function playerResponse() {
     try {
-      if (window.ytInitialPlayerResponse?.captions) return window.ytInitialPlayerResponse;
-      const p = document.getElementById("movie_player");
-      const live = p?.getPlayerResponse?.();
+      // Firefox content scripts run in an isolated JavaScript world. YouTube's
+      // player response is a page-world global, so read it through the Firefox
+      // Xray escape hatch when available instead of silently missing captions.
+      const pageWindow = window.wrappedJSObject || window;
+      const initial = pageWindow.ytInitialPlayerResponse;
+      if (initial?.captions) return initial;
+
+      const player = document.getElementById("movie_player");
+      const pagePlayer = player?.wrappedJSObject || player;
+      const live = pagePlayer?.getPlayerResponse?.();
       if (live?.captions) return live;
-      const raw = window.ytplayer?.config?.args?.player_response;
+
+      const raw = pageWindow.ytplayer?.config?.args?.player_response;
       if (raw) {
         const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (parsed?.captions) return parsed;
       }
-    } catch (_) {}
+    } catch (error) {
+      console.debug("[YouTranslate] player response is not available yet", error);
+    }
     return null;
   }
 
@@ -525,6 +535,13 @@
 
   async function startSpeaking() {
     if (enabled) return;
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+      throw new Error("В этом Firefox недоступна системная озвучка. Обнови Firefox и проверь настройки звука.");
+    }
+    const videoAtStart = document.querySelector("video");
+    if (!videoAtStart) {
+      throw new Error("Не найден видеоплеер. Подожди, пока видео YouTube полностью загрузится, и попробуй снова.");
+    }
     enabled = true;
     if (button) button.textContent = "Ⅱ Остановить озвучку";
     const ok = await loadCaptions();
