@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTranslate</title>
+<style>
+*{box-sizing:border-box}body{margin:0;width:310px;padding:18px;background:#11131b;color:#f7f7fb;font:13px/1.5 system-ui,-apple-system,sans-serif}.head{display:flex;align-items:center;gap:11px;margin-bottom:16px}.logo{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#8b5cf6,#3b82f6);font-size:23px}.title{font-size:17px;font-weight:750}.sub{color:#a8aab8;font-size:11px}.card{border:1px solid #ffffff17;border-radius:14px;padding:13px;background:#ffffff07}label{display:block;color:#c9cbd5;margin:2px 0 7px}select{width:100%;padding:10px;border-radius:10px;border:1px solid #ffffff20;background:#292c38;color:#fff;outline:none}.tip{color:#a8aab8;font-size:11px;margin:12px 2px 0}.open{width:100%;margin-top:12px;padding:11px;border:0;border-radius:11px;background:linear-gradient(100deg,#8b5cf6,#4f75ff);color:white;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="head"><div class="logo">文</div><div><div class="title">YouTranslate</div><div class="sub">Голосовой перевод YouTube</div></div></div>
+<div class="card"><label for="language">Язык перевода</label><select id="language"><option value="ru">Русский</option><option value="en">English</option><option value="es">Español</option><option value="de">Deutsch</option><option value="fr">Français</option><option value="it">Italiano</option><option value="pt">Português</option><option value="pl">Polski</option><option value="tr">Türkçe</option><option value="uk">Українська</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh-CN">中文</option><option value="ar">العربية</option><option value="hi">हिन्दी</option></select></div>
+<button class="open" id="open">Открыть YouTube</button>
+<p class="tip">Открой видео на YouTube и нажми плавающую кнопку «Перевод голоса». Нужны доступные субтитры. Голос создаёт встроенный синтез речи браузера.</p>
+<script src="popup.js"></script>
+</body>
+</html>
