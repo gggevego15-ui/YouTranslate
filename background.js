@@ -15,9 +15,24 @@ async function fetchCaptionData(rawUrl) {
   if (url.protocol !== "https:" || !/(^|\.)youtube\.com$/.test(url.hostname)) {
     throw new Error("Недопустимый адрес субтитров YouTube.");
   }
-  const response = await fetch(url.toString(), { credentials: "omit" });
-  if (!response.ok) throw new Error("YouTube не отдал субтитры (HTTP " + response.status + ").");
-  return response.json();
+  // YouTube can return caption URLs on youtube.com or www.youtube.com.
+  // Ask explicitly for JSON3 and preserve the signed URL parameters.
+  url.searchParams.set("fmt", "json3");
+  const response = await fetch(url.toString(), {
+    credentials: "include",
+    redirect: "follow",
+    cache: "no-store"
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error("YouTube не отдал субтитры (HTTP " + response.status + ").");
+  }
+  try {
+    return JSON.parse(body);
+  } catch (_) {
+    const contentType = response.headers.get("content-type") || "неизвестный тип";
+    throw new Error("YouTube вернул не JSON субтитров (" + contentType + ").");
+  }
 }
 
 const translationCache = new Map();
