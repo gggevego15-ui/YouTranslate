@@ -101,7 +101,7 @@
     const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!tracks?.length) {
       setStatus("Субтитров нет. Пробую локально распознать аудио через Whisper…");
-      return false;
+      return "missing";
     }
     // Prefer captions in the requested language, including YouTube auto-generated (ASR) tracks.
     // If that language is unavailable, prefer any ASR track before falling back to English.
@@ -114,9 +114,14 @@
     try {
       const url = new URL(chosen.baseUrl);
       url.searchParams.set("fmt", "json3");
-      const res = await fetch(url.toString(), { credentials: "omit" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
+      // Fetch caption tracks from the extension background context. A content-script
+      // fetch can be blocked by YouTube CORS even when the track is available.
+      const result = await browser.runtime.sendMessage({
+        type: "youtranslate:captions",
+        url: url.toString()
+      });
+      if (!result?.ok) throw new Error(result?.error || "Не удалось загрузить субтитры");
+      const data = result.data;
       if (token !== loadToken) return false;
       captions = (data.events || []).filter(e => e.segs?.length && Number.isFinite(e.tStartMs))
         .map(e => ({ start: e.tStartMs / 1000, duration: (e.dDurationMs || 1800) / 1000,
@@ -475,8 +480,13 @@
     const ok = await loadCaptions();
     if (!enabled) return;
     activeVideo = document.querySelector("video");
-    if (!ok) {
+    if (ok === "missing") {
       await startLocalASR(activeVideo);
+      return;
+    }
+    if (!ok) {
+      enabled = false;
+      if (button) button.textContent = "▶ Включить озвучку";
       return;
     }
     if (!activeVideo) {
