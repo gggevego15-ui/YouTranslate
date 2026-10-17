@@ -32,5 +32,10 @@
       "id": "youtranslate@sinrok.dev",
       "strict_min_version": "128.0"
     }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
   }
 }
