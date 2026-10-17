@@ -15,7 +15,7 @@ Firefox extension that translates available YouTube captions and speaks the tran
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on…**.
 3. Select the `manifest.json` file from a downloaded copy of this repository.
-4. Open a YouTube video with captions and click **Перевод голоса** in the bottom-right corner.
+4. Open a YouTube video and click **Перевод голоса** in the bottom-right corner. If captions are unavailable, the extension tries local Whisper transcription.
 
 Temporary add-ons are removed when Firefox restarts. For normal distribution, the extension must be packaged and signed for Firefox.
 
