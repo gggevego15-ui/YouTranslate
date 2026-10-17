@@ -100,37 +100,53 @@
     document.documentElement.append(fab);
   }
 
-  function playerResponse() {
-    try {
-      // Firefox content scripts run in an isolated JavaScript world. YouTube's
-      // player response is a page-world global, so read it through the Firefox
-      // Xray escape hatch when available instead of silently missing captions.
-      const pageWindow = window.wrappedJSObject || window;
-      const initial = pageWindow.ytInitialPlayerResponse;
-      if (initial?.captions) return initial;
-
-      const player = document.getElementById("movie_player");
-      const pagePlayer = player?.wrappedJSObject || player;
-      const live = pagePlayer?.getPlayerResponse?.();
-      if (live?.captions) return live;
-
-      const raw = pageWindow.ytplayer?.config?.args?.player_response;
-      if (raw) {
-        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (parsed?.captions) return parsed;
-      }
-    } catch (error) {
-      console.debug("[YouTranslate] player response is not available yet", error);
-    }
-    return null;
+  function currentVideoId() {
+    const url = new URL(location.href);
+    if (url.pathname.startsWith("/shorts/")) return url.pathname.split("/")[2] || "";
+    if (url.pathname.startsWith("/live/")) return url.pathname.split("/")[2] || "";
+    return url.searchParams.get("v") || "";
   }
 
-  async function waitForPlayerResponse(timeoutMs = 2200) {
+  function playerResponse() {
+    try {
+      // YouTube is a single-page app: after navigation the old initial response
+      // can remain briefly available. Prefer the active player and reject a
+      // response whose video ID doesn't match the URL currently being watched.
+      const pageWindow = window.wrappedJSObject || window;
+      const player = document.getElementById("movie_player");
+      const pagePlayer = player?.wrappedJSObject || player;
+      const candidates = [];
+      try { candidates.push(pagePlayer?.getPlayerResponse?.()); } catch (_) {}
+      try { candidates.push(pageWindow.ytInitialPlayerResponse); } catch (_) {}
+      try {
+        const raw = pageWindow.ytplayer?.config?.args?.player_response;
+        if (raw) candidates.push(typeof raw === "string" ? JSON.parse(raw) : raw);
+      } catch (_) {}
+
+      const expectedId = currentVideoId();
+      const valid = candidates.filter(item =>
+        item?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length
+      );
+      if (expectedId) {
+        const matching = valid.find(item => item.videoDetails?.videoId === expectedId);
+        if (matching) return matching;
+        // A stale response is worse than no response: never load captions from
+        // the previous video just because its player data is still on the page.
+        return null;
+      }
+      return valid[0] || null;
+    } catch (error) {
+      console.debug("[YouTranslate] player response is not available yet", error);
+      return null;
+    }
+  }
+
+  async function waitForPlayerResponse(timeoutMs = 9000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const response = playerResponse();
       if (response?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length) return response;
-      await wait(120);
+      await wait(150);
     }
     return playerResponse();
   }
@@ -139,8 +155,13 @@
     const token = ++loadToken;
     captions = [];
     lastIndex = -1;
+    const requestedVideoId = currentVideoId();
     const response = await waitForPlayerResponse();
     if (token !== loadToken) return false;
+    if (requestedVideoId && response?.videoDetails?.videoId !== requestedVideoId) {
+      setStatus("Не удалось получить субтитры именно этого видео. Попробуй ещё раз через пару секунд.");
+      return false;
+    }
     const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!tracks?.length) {
       setStatus("Субтитров нет. Пробую локально распознать аудио через Whisper…");
@@ -161,7 +182,8 @@
       // fetch can be blocked by YouTube CORS even when the track is available.
       const result = await browser.runtime.sendMessage({
         type: "youtranslate:captions",
-        url: url.toString()
+        url: url.toString(),
+        videoId: requestedVideoId
       });
       if (!result?.ok) throw new Error(result?.error || "Не удалось загрузить субтитры");
       const data = result.data;
