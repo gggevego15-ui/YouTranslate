@@ -1,0 +1,34 @@
+name: Package Firefox extension
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate extension files
+        run: |
+          test -f manifest.json
+          test -f content.js
+          test -f background.js
+          test -f popup.html
+          test -f popup.js
+          node -e "const m=require('./manifest.json'); if(m.manifest_version!==3 || !m.content_scripts || !m.background) process.exit(1); console.log('Manifest OK:', m.name, m.version)"
+      - name: Create ZIP package
+        run: |
+          mkdir -p dist
+          zip -j dist/YouTranslate-Firefox.zip manifest.json content.js background.js popup.html popup.js
+      - name: Upload extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: YouTranslate-Firefox
+          path: dist/YouTranslate-Firefox.zip
+          if-no-files-found: error
