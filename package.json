@@ -1,7 +1,7 @@
 {
   "name": "youtranslate-firefox",
   "private": true,
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Firefox extension with in-browser Whisper transcription",
   "scripts": {
     "build:asr": "esbuild asr-engine-src.js --bundle --format=esm --platform=browser --target=firefox128 --outfile=dist/asr-engine.js"
