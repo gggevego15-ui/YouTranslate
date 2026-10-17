@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTranslate — озвучка перевода YouTube",
-  "version": "0.1.0",
-  "description": "Переводит субтитры YouTube и озвучивает перевод выбранным языком.",
+  "version": "0.1.3",
+  "description": "Переводит доступные субтитры, включая автоматически распознанную речь YouTube, и озвучивает перевод.",
   "permissions": [
     "storage"
   ],
