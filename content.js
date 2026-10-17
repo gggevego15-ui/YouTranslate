@@ -225,7 +225,8 @@
       return true;
     } catch (e) {
       console.warn("[YouTranslate] captions error", e);
-      setStatus("Не удалось получить субтитры. Попробуй другое видео с субтитрами.");
+      const reason = String(e?.message || e || "неизвестная ошибка").slice(0, 140);
+      setStatus("Не удалось получить субтитры: " + reason);
       return false;
     }
   }
