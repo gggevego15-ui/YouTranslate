@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTranslate — озвучка перевода YouTube",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Переводит субтитры YouTube или локально распознаёт речь моделью Whisper, затем озвучивает перевод.",
   "permissions": [
     "storage"
