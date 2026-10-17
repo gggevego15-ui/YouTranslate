@@ -50,10 +50,10 @@
       <small class="ytx-note">Если субтитров нет, пробуем локально распознать звук Whisper. Модель скачивается при первом запуске; аудио обрабатывается в браузере.</small>`;
     const style = document.createElement("style");
     style.textContent = `
-      #youtranslate-panel{position:fixed;z-index:2147483647;right:22px;bottom:90px;width:260px;padding:16px;border:1px solid #ffffff38;border-radius:20px;background:rgba(20,22,29,.88);backdrop-filter:blur(24px) saturate(160%);box-shadow:0 18px 55px #0007;color:#f7f7fb;font:13px/1.4 system-ui,-apple-system,sans-serif}
-      #youtranslate-panel *{box-sizing:border-box}#youtranslate-panel .ytx-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}#youtranslate-panel .ytx-logo{display:grid;place-items:center;width:38px;height:38px;border-radius:13px;background:linear-gradient(135deg,#8b5cf6,#3b82f6);font-size:21px}#youtranslate-panel .ytx-head div{display:grid;gap:2px;flex:1}#youtranslate-panel .ytx-head b{font-size:15px}#youtranslate-panel .ytx-head small,#youtranslate-panel .ytx-note{color:#a8aab8}#youtranslate-panel .ytx-close{border:0;background:#ffffff12;color:#fff;border-radius:9px;font-size:21px;width:30px;height:30px;cursor:pointer}
-      #youtranslate-panel .ytx-label,#youtranslate-panel .ytx-volume label{display:block;color:#c9cbd5;margin:10px 0 6px}#youtranslate-panel select{width:100%;padding:10px;border:1px solid #ffffff24;border-radius:11px;background:#2b2d38;color:white;outline:none}#youtranslate-panel .ytx-main{width:100%;margin:13px 0 2px;padding:11px;border:0;border-radius:12px;background:linear-gradient(100deg,#8b5cf6,#4f75ff);color:white;font-weight:650;cursor:pointer;transition:transform .18s,filter .18s}#youtranslate-panel .ytx-main:hover{filter:brightness(1.12);transform:translateY(-1px)}#youtranslate-panel .ytx-volume input{width:100%;accent-color:#9b8cff}#youtranslate-panel .ytx-status{padding:9px 10px;border-radius:10px;background:#ffffff0c;color:#d8d6ff;margin:10px 0}#youtranslate-panel .ytx-note{display:block;font-size:10px;line-height:1.45}
-      #youtranslate-fab{position:fixed;z-index:2147483646;right:22px;bottom:22px;border:1px solid #ffffff3d;border-radius:999px;padding:11px 15px;background:rgba(24,25,34,.82);backdrop-filter:blur(18px);box-shadow:0 8px 30px #0006;color:#fff;font:600 13px system-ui;cursor:pointer;display:flex;align-items:center;gap:8px;transition:transform .2s}#youtranslate-fab:hover{transform:translateY(-2px) scale(1.02)}#youtranslate-fab span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#3b82f6)}
+      #youtranslate-panel{animation:ytx-in .38s cubic-bezier(.2,.8,.2,1),ytx-glow 6s ease-in-out infinite;position:fixed;z-index:2147483647;right:22px;bottom:90px;width:278px;padding:17px;border:1px solid #ffffff40;border-radius:24px;background:linear-gradient(145deg,rgba(36,38,53,.82),rgba(15,17,27,.78));backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);box-shadow:0 22px 65px #0008,inset 0 1px #ffffff1c;color:#f7f7fb;font:13px/1.45 system-ui,-apple-system,sans-serif}
+      @keyframes ytx-in{from{opacity:0;transform:translateY(14px) scale(.97);filter:blur(8px)}to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}@keyframes ytx-glow{0%,100%{box-shadow:0 18px 55px #0007,0 0 0 #8b5cf600}50%{box-shadow:0 20px 58px #0008,0 0 28px #8b5cf625}}@keyframes ytx-shimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}#youtranslate-panel *{box-sizing:border-box}#youtranslate-panel .ytx-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}#youtranslate-panel .ytx-logo{display:grid;place-items:center;width:38px;height:38px;border-radius:13px;background:linear-gradient(135deg,#8b5cf6,#3b82f6);font-size:21px}#youtranslate-panel .ytx-head div{display:grid;gap:2px;flex:1}#youtranslate-panel .ytx-head b{font-size:15px}#youtranslate-panel .ytx-head small,#youtranslate-panel .ytx-note{color:#a8aab8}#youtranslate-panel .ytx-close{border:0;background:#ffffff12;color:#fff;border-radius:9px;font-size:21px;width:30px;height:30px;cursor:pointer}
+      #youtranslate-panel .ytx-label,#youtranslate-panel .ytx-volume label{display:block;color:#c9cbd5;margin:10px 0 6px}#youtranslate-panel select{width:100%;padding:10px;border:1px solid #ffffff24;border-radius:11px;background:#2b2d38;color:white;outline:none}#youtranslate-panel .ytx-main{position:relative;overflow:hidden;width:100%;margin:13px 0 2px;padding:11px;border:1px solid #ffffff30;border-radius:13px;background:linear-gradient(110deg,#8b5cf6,#5579ff,#a855f7,#8b5cf6);background-size:220% 100%;color:white;font-weight:700;cursor:pointer;transition:transform .22s,filter .22s,box-shadow .22s;box-shadow:inset 0 1px #ffffff35,0 7px 22px #6652e633}#youtranslate-panel .ytx-main:hover{filter:brightness(1.12);transform:translateY(-2px);box-shadow:inset 0 1px #ffffff45,0 10px 28px #6652e655}#youtranslate-panel .ytx-main:active{transform:scale(.98)}#youtranslate-panel .ytx-main:disabled{opacity:.8;cursor:wait}#youtranslate-panel .ytx-main.ytx-loading{animation:ytx-shimmer 1.5s linear infinite}#youtranslate-panel .ytx-volume input{width:100%;accent-color:#9b8cff}#youtranslate-panel .ytx-status{padding:9px 10px;border-radius:10px;background:#ffffff0c;color:#d8d6ff;margin:10px 0}#youtranslate-panel .ytx-note{display:block;font-size:10px;line-height:1.45}
+      #youtranslate-fab{animation:ytx-in .45s cubic-bezier(.2,.8,.2,1);position:fixed;z-index:2147483646;right:22px;bottom:22px;border:1px solid #ffffff50;border-radius:999px;padding:10px 15px;background:linear-gradient(145deg,rgba(50,52,70,.83),rgba(20,22,34,.78));backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 12px 35px #0007,inset 0 1px #ffffff24;color:#fff;font:650 13px system-ui;cursor:pointer;display:flex;align-items:center;gap:8px;transition:transform .25s,box-shadow .25s,border-color .25s}#youtranslate-fab:hover{transform:translateY(-2px) scale(1.02)}#youtranslate-fab span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#3b82f6)}
     `;
     document.documentElement.append(style, panel);
     statusEl = panel.querySelector(".ytx-status");
@@ -76,7 +76,22 @@
       settings.volume = Number(volume.value);
       await browser.storage.local.set({ volume: settings.volume });
     };
-    button.onclick = () => enabled ? stopSpeaking() : startSpeaking();
+    button.onclick = async () => {
+      if (enabled) { stopSpeaking(); return; }
+      button.disabled = true;
+      button.classList.add("ytx-loading");
+      setStatus("Запускаю перевод…");
+      try { await startSpeaking(); }
+      catch (error) {
+        console.error("[YouTranslate] start failed", error);
+        enabled = false;
+        button.textContent = "▶ Включить озвучку";
+        setStatus(error?.message || "Не удалось запустить озвучку. Обнови страницу и попробуй снова.");
+      } finally {
+        button.disabled = false;
+        button.classList.remove("ytx-loading");
+      }
+    };
     const fab = document.createElement("button");
     fab.id = "youtranslate-fab";
     fab.innerHTML = "<span>文</span> Перевод голоса";
@@ -86,18 +101,35 @@
 
   function playerResponse() {
     try {
-      if (window.ytInitialPlayerResponse) return window.ytInitialPlayerResponse;
+      if (window.ytInitialPlayerResponse?.captions) return window.ytInitialPlayerResponse;
       const p = document.getElementById("movie_player");
-      if (p?.getPlayerResponse) return p.getPlayerResponse();
+      const live = p?.getPlayerResponse?.();
+      if (live?.captions) return live;
+      const raw = window.ytplayer?.config?.args?.player_response;
+      if (raw) {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (parsed?.captions) return parsed;
+      }
     } catch (_) {}
     return null;
+  }
+
+  async function waitForPlayerResponse(timeoutMs = 2200) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const response = playerResponse();
+      if (response?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length) return response;
+      await wait(120);
+    }
+    return playerResponse();
   }
 
   async function loadCaptions() {
     const token = ++loadToken;
     captions = [];
     lastIndex = -1;
-    const response = playerResponse();
+    const response = await waitForPlayerResponse();
+    if (token !== loadToken) return false;
     const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!tracks?.length) {
       setStatus("Субтитров нет. Пробую локально распознать аудио через Whisper…");
