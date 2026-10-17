@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "YouTranslate — озвучка перевода YouTube",
+  "version": "0.1.0",
+  "description": "Переводит субтитры YouTube и озвучивает перевод выбранным языком.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://www.youtube-nocookie.com/*",
+    "https://translate.googleapis.com/*"
+  ],
+  "action": {
+    "default_title": "YouTranslate",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://www.youtube-nocookie.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "youtranslate@sinrok.dev",
+      "strict_min_version": "128.0"
+    }
+  }
+}
