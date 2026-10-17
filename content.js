@@ -14,6 +14,8 @@
   let previousWallTime = null;
   let speechCaptionIndex = -1;
   let speechGeneration = 0;
+  let speechQueue = [];
+  let speechBusy = false;
   let panel = null;
   let statusEl = null;
   let button = null;
@@ -155,42 +157,79 @@
 
   function cancelCurrentSpeech(resetCaption = true) {
     speechGeneration++;
+    speechQueue = [];
+    speechBusy = false;
     if ("speechSynthesis" in window) speechSynthesis.cancel();
     utterance = null;
     if (resetCaption) speechCaptionIndex = -1;
   }
 
-  function speakCaption(index) {
-    const c = captions[index];
-    if (!c || !c.translated || !("speechSynthesis" in window)) return;
-    cancelCurrentSpeech(false);
-    speechCaptionIndex = index;
-    const generation = speechGeneration;
-    utterance = new SpeechSynthesisUtterance(c.translated);
-    utterance.lang = settings.targetLanguage;
-    utterance.volume = Math.max(0, Math.min(1, settings.volume));
+  function makeUtterance(item, generation) {
+    const speech = new SpeechSynthesisUtterance(item.text);
+    speech.lang = settings.targetLanguage;
+    speech.volume = Math.max(0, Math.min(1, settings.volume));
 
-    // Estimate the available caption window and speed up long translations modestly.
-    // This cannot guarantee word-perfect sync because Web Speech exposes no word timing.
-    const remaining = Math.max(0.65, c.start + c.duration - (activeVideo?.currentTime || c.start));
-    const estimatedSeconds = Math.max(0.8, c.translated.length / 13);
+    // Fit the translated line to its remaining caption window, without extreme acceleration.
+    const remaining = Math.max(0.8, item.end - (activeVideo?.currentTime || item.start));
+    const estimatedSeconds = Math.max(0.8, item.text.length / 14);
     const fitRate = estimatedSeconds / remaining;
-    utterance.rate = Math.max(0.85, Math.min(1.8, settings.rate * fitRate));
+    speech.rate = Math.max(0.9, Math.min(1.8, settings.rate * fitRate));
 
     const voices = speechSynthesis.getVoices();
     const languageBase = settings.targetLanguage.split("-")[0].toLowerCase();
     const voice = voices.find(v => v.lang.toLowerCase() === settings.targetLanguage.toLowerCase())
       || voices.find(v => v.lang.toLowerCase().startsWith(languageBase));
-    if (voice) utterance.voice = voice;
-    utterance.onend = () => {
-      if (generation === speechGeneration && speechCaptionIndex === index) {
-        utterance = null;
-      }
+    if (voice) speech.voice = voice;
+    speech.onend = () => {
+      if (generation !== speechGeneration) return;
+      utterance = null;
+      speechBusy = false;
+      playNextSpeech();
     };
-    utterance.onerror = () => {
-      if (generation === speechGeneration) utterance = null;
+    speech.onerror = () => {
+      if (generation !== speechGeneration) return;
+      utterance = null;
+      speechBusy = false;
+      playNextSpeech();
     };
+    return speech;
+  }
+
+  function playNextSpeech() {
+    if (!enabled || speechBusy || !speechQueue.length || !("speechSynthesis" in window)) return;
+    const item = speechQueue.shift();
+    // Discard stale queued lines after buffering, but never interrupt a line already speaking.
+    if (activeVideo && activeVideo.currentTime > item.end + 1.25) {
+      playNextSpeech();
+      return;
+    }
+    speechBusy = true;
+    const generation = speechGeneration;
+    utterance = makeUtterance(item, generation);
     speechSynthesis.speak(utterance);
+  }
+
+  function speakCaption(index) {
+    const c = captions[index];
+    if (!c || !c.translated || !("speechSynthesis" in window)) return;
+    speechCaptionIndex = index;
+    const item = {
+      index,
+      text: c.translated,
+      start: c.start,
+      end: c.start + c.duration
+    };
+
+    // Web Speech is sequential. Keep a short bounded queue so captions are not cut off
+    // when the next subtitle appears; merge overflow into the final queued line.
+    if (speechQueue.length < 3) {
+      speechQueue.push(item);
+    } else {
+      const tail = speechQueue[speechQueue.length - 1];
+      tail.text = (tail.text + " " + item.text).trim();
+      tail.end = Math.max(tail.end, item.end);
+    }
+    playNextSpeech();
   }
 
   function startSyncLoop() {
@@ -246,8 +285,6 @@
           const lateness = currentTime - caption.start;
           if (lateness <= Math.max(0.9, caption.duration * 0.65)) speakCaption(index);
           else cancelCurrentSpeech();
-        } else {
-          cancelCurrentSpeech();
         }
       }
     }, 100);
