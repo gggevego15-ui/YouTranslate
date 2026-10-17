@@ -13,20 +13,31 @@ export async function transcribeAudio(samples, onProgress = () => {}) {
   }
 
   if (!transcriberPromise) {
-    const device = navigator.gpu ? "webgpu" : "wasm";
-    transcriberPromise = pipeline(
-      "automatic-speech-recognition",
-      "onnx-community/whisper-tiny",
-      {
-        device,
-        dtype: device === "webgpu" ? "fp32" : "q8",
-        progress_callback: (progress) => {
-          if (progress && Number.isFinite(progress.progress)) {
-            onProgress(Math.round(progress.progress));
-          }
+    const options = {
+      progress_callback: (progress) => {
+        if (progress && Number.isFinite(progress.progress)) {
+          onProgress(Math.round(progress.progress));
         }
       }
-    ).catch((error) => {
+    };
+    transcriberPromise = (async () => {
+      if (navigator.gpu) {
+        try {
+          return await pipeline(
+            "automatic-speech-recognition",
+            "onnx-community/whisper-tiny",
+            { ...options, device: "webgpu", dtype: "fp32" }
+          );
+        } catch (error) {
+          console.warn("[YouTranslate] WebGPU unavailable; falling back to WASM", error);
+        }
+      }
+      return pipeline(
+        "automatic-speech-recognition",
+        "onnx-community/whisper-tiny",
+        { ...options, device: "wasm", dtype: "q8" }
+      );
+    })().catch((error) => {
       transcriberPromise = null;
       throw error;
     });
