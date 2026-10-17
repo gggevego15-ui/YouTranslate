@@ -295,7 +295,11 @@
       speechBusy = false;
       const code = event?.error || "unknown";
       if (!["canceled", "interrupted"].includes(code)) {
-        setStatus(`Ошибка системной озвучки (${code}). Проверь голос и звук Firefox.`);
+        if (code === "not-allowed" || code === "permission-denied") {
+          setStatus("Firefox заблокировал запуск голоса. Перезагрузи вкладку YouTube, нажми «Включить озвучку» вручную и проверь, что звук сайта не заблокирован.");
+        } else {
+          setStatus(`Ошибка системной озвучки (${code}). Проверь голос и звук Firefox.`);
+        }
         console.warn("[YouTranslate] speech synthesis error", code);
       }
       playNextSpeech();
@@ -594,7 +598,13 @@
       if (enabled) {
         enabled = false;
         if (button) button.textContent = "▶ Включить озвучку";
-        setStatus(error?.message || "Локальное распознавание не удалось запустить.");
+        const detail = String(error?.message || "");
+        const name = String(error?.name || "");
+        if (/permission denied|notallowederror|not allowed/i.test(detail) || name === "NotAllowedError" || name === "SecurityError") {
+          setStatus("Firefox запретил захват аудио этого видео. Это не разрешение на микрофон: перезагрузи вкладку и попробуй видео с субтитрами YouTube. Защищённые видео могут не поддерживать локальное распознавание.");
+        } else {
+          setStatus(detail || "Локальное распознавание не удалось запустить.");
+        }
       }
     } finally {
       asrRunning = false;
