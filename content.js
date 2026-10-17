@@ -108,38 +108,60 @@
     return url.searchParams.get("v") || "";
   }
 
-  function playerResponse() {
+  function clonePageData(value) {
+    if (value == null) return null;
     try {
-      // YouTube is a single-page app: after navigation the old initial response
-      // can remain briefly available. Prefer the active player and reject a
-      // response whose video ID doesn't match the URL currently being watched.
+      // Firefox content scripts see page objects through Xray wrappers.
+      // Keep page-owned objects out of extension-side array callbacks and
+      // property traversal: that boundary can throw "Permission denied to access object".
+      // JSON snapshot copies the plain YouTube player response into this script's realm.
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      console.debug("[YouTranslate] could not snapshot YouTube player data", error);
+      return null;
+    }
+  }
+
+  function playerResponse() {
+    const candidates = [];
+    try {
+      // YouTube's player response is page-owned data. Snapshot each candidate
+      // immediately so the rest of the extension only reads local plain objects.
       const pageWindow = window.wrappedJSObject || window;
       const player = document.getElementById("movie_player");
       const pagePlayer = player?.wrappedJSObject || player;
-      const candidates = [];
-      try { candidates.push(pagePlayer?.getPlayerResponse?.()); } catch (_) {}
-      try { candidates.push(pageWindow.ytInitialPlayerResponse); } catch (_) {}
+      try { candidates.push(clonePageData(pagePlayer?.getPlayerResponse?.())); } catch (error) {
+        console.debug("[YouTranslate] player response method unavailable", error);
+      }
+      try { candidates.push(clonePageData(pageWindow.ytInitialPlayerResponse)); } catch (error) {
+        console.debug("[YouTranslate] initial player response unavailable", error);
+      }
       try {
         const raw = pageWindow.ytplayer?.config?.args?.player_response;
-        if (raw) candidates.push(typeof raw === "string" ? JSON.parse(raw) : raw);
-      } catch (_) {}
-
-      const expectedId = currentVideoId();
-      const valid = candidates.filter(item =>
-        item?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length
-      );
-      if (expectedId) {
-        const matching = valid.find(item => item.videoDetails?.videoId === expectedId);
-        if (matching) return matching;
-        // A stale response is worse than no response: never load captions from
-        // the previous video just because its player data is still on the page.
-        return null;
+        if (raw) {
+          const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+          candidates.push(clonePageData(parsed));
+        }
+      } catch (error) {
+        console.debug("[YouTranslate] configured player response unavailable", error);
       }
-      return valid[0] || null;
     } catch (error) {
-      console.debug("[YouTranslate] player response is not available yet", error);
+      console.debug("[YouTranslate] page player data is not accessible", error);
       return null;
     }
+
+    const expectedId = currentVideoId();
+    const valid = candidates.filter(item =>
+      item?.captions?.playerCaptionsTracklistRenderer?.captionTracks?.length
+    );
+    if (expectedId) {
+      const matching = valid.find(item => item.videoDetails?.videoId === expectedId);
+      if (matching) return matching;
+      // A stale response is worse than no response: never load captions from
+      // the previous video just because its player data is still on the page.
+      return null;
+    }
+    return valid[0] || null;
   }
 
   async function waitForPlayerResponse(timeoutMs = 9000) {
