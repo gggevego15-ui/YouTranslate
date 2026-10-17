@@ -373,7 +373,12 @@
   }
 
   async function startLocalASR(video) {
-    if (!video) throw new Error("Видеоплеер не найден.");
+    if (!video) {
+      enabled = false;
+      if (button) button.textContent = "▶ Включить озвучку";
+      setStatus("Видеоплеер не найден.");
+      return;
+    }
     asrVideo = video;
     asrRunning = true;
     setStatus("Субтитров нет. Загружаю локальную модель Whisper…");
@@ -385,7 +390,7 @@
       if (!capture) throw new Error("Эта версия Firefox не поддерживает захват аудио из видеоплеера.");
       asrStream = capture.call(video);
       if (!asrStream.getAudioTracks().length) throw new Error("Firefox не предоставил аудиодорожку для распознавания.");
-      setStatus("Локальная модель готова. Запускаю распознавание речи…");
+      setStatus("Модуль распознавания готов. Подготавливаю модель Whisper…");
 
       while (enabled && asrRunning && !video.ended) {
         if (video.paused || document.hidden) {
@@ -442,6 +447,11 @@
       }
     } finally {
       asrRunning = false;
+      if (video.ended && enabled) {
+        enabled = false;
+        if (button) button.textContent = "▶ Включить озвучку";
+        setStatus("Видео завершено.");
+      }
       if (asrRecorder && asrRecorder.state !== "inactive") {
         try { asrRecorder.stop(); } catch (_) {}
       }
