@@ -322,7 +322,7 @@
     // Stop promptly when the user disables translation instead of leaving the
     // recorder loop asleep for the full chunk duration.
     const deadline = Date.now() + durationMs;
-    while (Date.now() < deadline && enabled && asrRunning) {
+    while (Date.now() < deadline && enabled && asrRunning && recorder.state !== "inactive") {
       await wait(Math.min(150, deadline - Date.now()));
     }
     const wasCancelled = !enabled || !asrRunning;
