@@ -100,7 +100,7 @@
     const response = playerResponse();
     const tracks = response?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     if (!tracks?.length) {
-      setStatus("YouTube не предоставил дорожку субтитров. В этой версии нет отдельного ASR-движка для распознавания аудио напрямую.");
+      setStatus("Субтитров нет. Пробую локально распознать аудио через Whisper…");
       return false;
     }
     // Prefer captions in the requested language, including YouTube auto-generated (ASR) tracks.
