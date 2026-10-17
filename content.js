@@ -2,7 +2,7 @@
   if (window.__youTranslateLoaded) return;
   window.__youTranslateLoaded = true;
 
-  const DEFAULTS = { targetLanguage: "ru", rate: 1, volume: 0.9, duckOriginal: false };
+  const DEFAULTS = { targetLanguage: "ru", rate: 1.1, volume: 0.9, duckOriginal: false };
   let settings = { ...DEFAULTS };
   let enabled = false;
   let captions = [];
@@ -125,23 +125,15 @@
       if (token !== loadToken) return false;
       captions = (data.events || []).filter(e => e.segs?.length && Number.isFinite(e.tStartMs))
         .map(e => ({ start: e.tStartMs / 1000, duration: (e.dDurationMs || 1800) / 1000,
-          text: e.segs.map(s => s.utf8 || "").join("").replace(/\s+/g, " ").trim(), translated: "" }))
+          text: e.segs.map(s => s.utf8 || "").join("").replace(/\s+/g, " ").trim(), translated: "", sourceLanguage: chosen.languageCode }))
         .filter(c => c.text && !/^\[.*\]$/.test(c.text));
       if (!captions.length) throw new Error("Нет текстовых реплик");
       const trackKind = chosen.kind === "asr" ? "автоматическое распознавание YouTube" : "субтитры YouTube";
       setStatus(`Загружено (${trackKind}): ${captions.length} реплик. Перевожу…`);
-      // Translate in small batches to avoid oversized requests.
-      for (let i = 0; i < captions.length; i += 8) {
-        if (token !== loadToken) return false;
-        const batch = captions.slice(i, i + 8);
-        await Promise.all(batch.map(async c => {
-          try { c.translated = await translate(c.text, chosen.languageCode); }
-          catch (_) { c.translated = c.text; }
-        }));
-        setStatus(`Перевожу реплики: ${Math.min(i + batch.length, captions.length)} / ${captions.length}`);
-      }
+      // Translate only the current caption and a short look-ahead window.
+      // This lets speech begin quickly instead of waiting for the whole video.
       if (token !== loadToken) return false;
-      setStatus(`Готово. Язык: ${languages.find(l=>l[0]===settings.targetLanguage)?.[1] || settings.targetLanguage}`);
+      setStatus(`Субтитры готовы: ${captions.length} реплик. Запускаю озвучку…`);
       return true;
     } catch (e) {
       console.warn("[YouTranslate] captions error", e);
@@ -160,6 +152,27 @@
     });
     if (!result?.ok) throw new Error(result?.error || "Translation request failed");
     return result.text || text;
+  }
+
+  async function ensureTranslations(index) {
+    const token = loadToken;
+    const end = Math.min(captions.length, index + 6);
+    const work = [];
+    for (let i = Math.max(0, index); i < end; i++) {
+      const caption = captions[i];
+      if (caption.translated) continue;
+      if (!caption.translationPromise) {
+        caption.translationPromise = translate(caption.text, caption.sourceLanguage || "auto")
+          .then(text => { caption.translated = text || caption.text; })
+          .catch(() => { caption.translated = caption.text; })
+          .finally(() => { delete caption.translationPromise; });
+      }
+      work.push(caption.translationPromise);
+    }
+    await Promise.all(work);
+    if (token !== loadToken || !enabled) return;
+    const ready = captions.slice(index, end).filter(c => c.translated).length;
+    setStatus(`Озвучка активна · переведено заранее: ${ready} реплик`);
   }
 
   function currentCaptionIndex(time) {
@@ -191,7 +204,7 @@
     const remaining = Math.max(0.8, item.end - (activeVideo?.currentTime || item.start));
     const estimatedSeconds = Math.max(0.8, item.text.length / 14);
     const fitRate = estimatedSeconds / remaining;
-    speech.rate = Math.max(0.9, Math.min(1.8, settings.rate * fitRate));
+    speech.rate = Math.max(0.9, Math.min(2.0, settings.rate * fitRate));
 
     const voices = speechSynthesis.getVoices();
     const languageBase = settings.targetLanguage.split("-")[0].toLowerCase();
@@ -301,7 +314,12 @@
           // Skip a line if playback has already passed most of its display window.
           const caption = captions[index];
           const lateness = currentTime - caption.start;
-          if (lateness <= Math.max(0.9, caption.duration * 0.65)) speakCaption(index);
+          if (lateness <= Math.max(0.9, caption.duration * 0.65)) {
+            if (caption.translated) speakCaption(index);
+            else ensureTranslations(index).then(() => {
+              if (enabled && lastIndex === index && currentCaptionIndex(activeVideo?.currentTime || 0) === index) speakCaption(index);
+            });
+          }
         }
       }
     }, 100);
