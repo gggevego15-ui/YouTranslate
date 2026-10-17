@@ -12,7 +12,7 @@ browser.runtime.onMessage.addListener((message) => {
 
 async function fetchCaptionData(rawUrl) {
   const url = new URL(rawUrl);
-  if (url.protocol !== "https:" || !/(^|\\.)youtube\\.com$/.test(url.hostname)) {
+  if (url.protocol !== "https:" || !/(^|\.)youtube\.com$/.test(url.hostname)) {
     throw new Error("Недопустимый адрес субтитров YouTube.");
   }
   const response = await fetch(url.toString(), { credentials: "omit" });
