@@ -10,6 +10,10 @@
   let utterance = null;
   let activeVideo = null;
   let poll = null;
+  let previousVideoTime = null;
+  let previousWallTime = null;
+  let speechCaptionIndex = -1;
+  let speechGeneration = 0;
   let panel = null;
   let statusEl = null;
   let button = null;
@@ -149,42 +153,125 @@
     return -1;
   }
 
+  function cancelCurrentSpeech(resetCaption = true) {
+    speechGeneration++;
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    utterance = null;
+    if (resetCaption) speechCaptionIndex = -1;
+  }
+
   function speakCaption(index) {
     const c = captions[index];
     if (!c || !c.translated || !("speechSynthesis" in window)) return;
-    speechSynthesis.cancel();
+    cancelCurrentSpeech(false);
+    speechCaptionIndex = index;
+    const generation = speechGeneration;
     utterance = new SpeechSynthesisUtterance(c.translated);
     utterance.lang = settings.targetLanguage;
     utterance.volume = Math.max(0, Math.min(1, settings.volume));
-    utterance.rate = settings.rate;
+
+    // Estimate the available caption window and speed up long translations modestly.
+    // This cannot guarantee word-perfect sync because Web Speech exposes no word timing.
+    const remaining = Math.max(0.65, c.start + c.duration - (activeVideo?.currentTime || c.start));
+    const estimatedSeconds = Math.max(0.8, c.translated.length / 13);
+    const fitRate = estimatedSeconds / remaining;
+    utterance.rate = Math.max(0.85, Math.min(1.8, settings.rate * fitRate));
+
     const voices = speechSynthesis.getVoices();
+    const languageBase = settings.targetLanguage.split("-")[0].toLowerCase();
     const voice = voices.find(v => v.lang.toLowerCase() === settings.targetLanguage.toLowerCase())
-      || voices.find(v => v.lang.toLowerCase().startsWith(settings.targetLanguage.split("-")[0].toLowerCase()));
+      || voices.find(v => v.lang.toLowerCase().startsWith(languageBase));
     if (voice) utterance.voice = voice;
+    utterance.onend = () => {
+      if (generation === speechGeneration && speechCaptionIndex === index) {
+        utterance = null;
+      }
+    };
+    utterance.onerror = () => {
+      if (generation === speechGeneration) utterance = null;
+    };
     speechSynthesis.speak(utterance);
   }
 
-  async function startSpeaking() {
-    enabled = true;
-    button.textContent = "Ⅱ Остановить озвучку";
-    const ok = await loadCaptions();
-    if (!ok) { enabled = false; button.textContent = "▶ Включить озвучку"; return; }
-    activeVideo = document.querySelector("video");
-    if (!activeVideo) { setStatus("Видеоплеер не найден."); enabled = false; return; }
+  function startSyncLoop() {
     if (poll) clearInterval(poll);
+    previousVideoTime = null;
+    previousWallTime = null;
     poll = setInterval(() => {
       if (!enabled) return;
       const video = document.querySelector("video");
       if (!video) return;
-      if (video !== activeVideo) { activeVideo = video; loadCaptions(); return; }
-      if (video.paused || video.ended) { speechSynthesis.cancel(); lastIndex = -1; return; }
-      const index = currentCaptionIndex(video.currentTime);
+
+      if (video !== activeVideo) {
+        activeVideo = video;
+        previousVideoTime = null;
+        previousWallTime = null;
+        lastIndex = -1;
+        cancelCurrentSpeech();
+        loadCaptions();
+        return;
+      }
+
+      const now = performance.now();
+      const currentTime = video.currentTime;
+      const wallDelta = previousWallTime == null ? 0 : (now - previousWallTime) / 1000;
+      const mediaDelta = previousVideoTime == null ? 0 : currentTime - previousVideoTime;
+      const jumped = previousVideoTime != null &&
+        (mediaDelta < -0.35 || mediaDelta > Math.max(1.25, wallDelta * 2.8));
+
+      previousVideoTime = currentTime;
+      previousWallTime = now;
+
+      if (jumped) {
+        lastIndex = -1;
+        cancelCurrentSpeech();
+      }
+
+      if (video.paused || video.ended || document.hidden) {
+        if (speechSynthesis.speaking && !speechSynthesis.paused) speechSynthesis.pause();
+        if (video.ended) {
+          cancelCurrentSpeech();
+          lastIndex = -1;
+        }
+        return;
+      }
+      if (speechSynthesis.paused) speechSynthesis.resume();
+
+      const index = currentCaptionIndex(currentTime);
       if (index !== lastIndex) {
         lastIndex = index;
-        if (index >= 0) speakCaption(index);
-        else speechSynthesis.cancel();
+        if (index >= 0) {
+          // Skip a line if playback has already passed most of its display window.
+          const caption = captions[index];
+          const lateness = currentTime - caption.start;
+          if (lateness <= Math.max(0.9, caption.duration * 0.65)) speakCaption(index);
+          else cancelCurrentSpeech();
+        } else {
+          cancelCurrentSpeech();
+        }
       }
-    }, 180);
+    }, 100);
+  }
+
+  async function startSpeaking() {
+    if (enabled) return;
+    enabled = true;
+    if (button) button.textContent = "Ⅱ Остановить озвучку";
+    const ok = await loadCaptions();
+    if (!enabled) return;
+    if (!ok) {
+      enabled = false;
+      if (button) button.textContent = "▶ Включить озвучку";
+      return;
+    }
+    activeVideo = document.querySelector("video");
+    if (!activeVideo) {
+      setStatus("Видеоплеер не найден.");
+      enabled = false;
+      if (button) button.textContent = "▶ Включить озвучку";
+      return;
+    }
+    startSyncLoop();
   }
 
   function stopSpeaking() {
@@ -192,7 +279,10 @@
     loadToken++;
     if (poll) clearInterval(poll);
     poll = null;
-    speechSynthesis.cancel();
+    previousVideoTime = null;
+    previousWallTime = null;
+    lastIndex = -1;
+    cancelCurrentSpeech();
     if (button) button.textContent = "▶ Включить озвучку";
     setStatus("Озвучка остановлена.");
   }
