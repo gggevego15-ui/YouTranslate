@@ -542,10 +542,35 @@
       const moduleUrl = browser.runtime.getURL("asr-engine.js");
       const asrModule = await import(moduleUrl);
       if (!enabled || !asrRunning) return;
-      const capture = video.captureStream || video.mozCaptureStream;
-      if (!capture) throw new Error("Эта версия Firefox не поддерживает захват аудио из видеоплеера.");
-      asrStream = capture.call(video);
-      if (!asrStream.getAudioTracks().length) throw new Error("Firefox не предоставил аудиодорожку для распознавания.");
+      // Firefox exposes both captureStream() and the legacy mozCaptureStream().
+      // Try each independently: on some Firefox/media combinations the first
+      // entry point can throw "Permission denied to access object" while the
+      // legacy entry point may still return a stream.
+      const captureMethods = [
+        ["captureStream", video.captureStream],
+        ["mozCaptureStream", video.mozCaptureStream]
+      ].filter(([, method], index, all) => typeof method === "function"
+        && all.findIndex(([name]) => name === (method === video.captureStream ? "captureStream" : "mozCaptureStream")) === index);
+      if (!captureMethods.length) throw new Error("Эта версия Firefox не поддерживает захват аудио из видеоплеера.");
+      let captureError = null;
+      for (const [methodName, capture] of captureMethods) {
+        try {
+          const stream = capture.call(video);
+          if (stream?.getAudioTracks().length) {
+            asrStream = stream;
+            break;
+          }
+          captureError = new Error(methodName + " не вернул аудиодорожку.");
+          stream?.getTracks().forEach(track => track.stop());
+        } catch (error) {
+          captureError = error;
+          console.warn("[YouTranslate] " + methodName + " failed", error);
+        }
+      }
+      if (!asrStream) {
+        const detail = String(captureError?.message || captureError || "неизвестная ошибка");
+        throw new Error("Firefox не разрешил захват аудио из видеоплеера (" + detail + "). Для этого видео используй субтитры YouTube; локальный Whisper не может прочитать звук, пока браузер блокирует захват.");
+      }
       setStatus("Модуль распознавания готов. Подготавливаю модель Whisper…");
 
       while (enabled && asrRunning && !video.ended) {
