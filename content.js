@@ -16,6 +16,7 @@
   let speechGeneration = 0;
   let speechQueue = [];
   let speechBusy = false;
+  let speechWatchdog = null;
   let asrRunning = false;
   let asrRecorder = null;
   let asrStream = null;
@@ -232,6 +233,8 @@
     speechGeneration++;
     speechQueue = [];
     speechBusy = false;
+    if (speechWatchdog) clearTimeout(speechWatchdog);
+    speechWatchdog = null;
     if ("speechSynthesis" in window) speechSynthesis.cancel();
     utterance = null;
     if (resetCaption) speechCaptionIndex = -1;
@@ -255,14 +258,23 @@
     if (voice) speech.voice = voice;
     speech.onend = () => {
       if (generation !== speechGeneration) return;
+      if (speechWatchdog) clearTimeout(speechWatchdog);
+      speechWatchdog = null;
       utterance = null;
       speechBusy = false;
       playNextSpeech();
     };
-    speech.onerror = () => {
+    speech.onerror = event => {
       if (generation !== speechGeneration) return;
+      if (speechWatchdog) clearTimeout(speechWatchdog);
+      speechWatchdog = null;
       utterance = null;
       speechBusy = false;
+      const code = event?.error || "unknown";
+      if (!["canceled", "interrupted"].includes(code)) {
+        setStatus(`Ошибка системной озвучки (${code}). Проверь голос и звук Firefox.`);
+        console.warn("[YouTranslate] speech synthesis error", code);
+      }
       playNextSpeech();
     };
     return speech;
@@ -279,7 +291,29 @@
     speechBusy = true;
     const generation = speechGeneration;
     utterance = makeUtterance(item, generation);
-    speechSynthesis.speak(utterance);
+    try {
+      speechSynthesis.speak(utterance);
+      // Some browser/OS speech engines can silently stall. Release the queue and
+      // expose the failure instead of leaving the extension stuck in "speaking".
+      const timeoutMs = Math.min(90000, Math.max(20000, item.text.length * 260));
+      speechWatchdog = setTimeout(() => {
+        if (generation !== speechGeneration || !speechBusy) return;
+        console.warn("[YouTranslate] speech synthesis watchdog fired");
+        speechGeneration++;
+        speechWatchdog = null;
+        utterance = null;
+        speechBusy = false;
+        speechSynthesis.cancel();
+        setStatus("Системная озвучка зависла. Проверь голос в Firefox/Windows и нажми запуск ещё раз.");
+      }, timeoutMs);
+    } catch (error) {
+      if (speechWatchdog) clearTimeout(speechWatchdog);
+      speechWatchdog = null;
+      utterance = null;
+      speechBusy = false;
+      setStatus("Firefox не смог запустить системную озвучку. Проверь доступные голоса и звук.");
+      console.error("[YouTranslate] speechSynthesis.speak failed", error);
+    }
   }
 
   function speakCaption(index) {
