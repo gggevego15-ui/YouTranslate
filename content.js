@@ -128,16 +128,14 @@
 
   async function translate(text, source) {
     if (!text) return "";
-    const url = new URL("https://translate.googleapis.com/translate_a/single");
-    url.searchParams.set("client", "gtx");
-    url.searchParams.set("sl", source || "auto");
-    url.searchParams.set("tl", settings.targetLanguage);
-    url.searchParams.set("dt", "t");
-    url.searchParams.set("q", text);
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error("Translation request failed");
-    const data = await res.json();
-    return (data[0] || []).map(part => part[0] || "").join("").trim() || text;
+    const result = await browser.runtime.sendMessage({
+      type: "youtranslate:translate",
+      text,
+      source: source || "auto",
+      target: settings.targetLanguage
+    });
+    if (!result?.ok) throw new Error(result?.error || "Translation request failed");
+    return result.text || text;
   }
 
   function currentCaptionIndex(time) {
