@@ -31,6 +31,7 @@ jobs:
         run: |
           mkdir -p dist
           npm run build:asr
+          node --check dist/asr-engine.js
       - name: Assemble and package extension
         run: |
           cp manifest.json content.js background.js popup.html popup.js dist/
