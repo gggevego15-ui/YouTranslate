@@ -319,10 +319,17 @@
       recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
     });
     recorder.start();
-    await wait(durationMs);
+    // Stop promptly when the user disables translation instead of leaving the
+    // recorder loop asleep for the full chunk duration.
+    const deadline = Date.now() + durationMs;
+    while (Date.now() < deadline && enabled && asrRunning) {
+      await wait(Math.min(150, deadline - Date.now()));
+    }
+    const wasCancelled = !enabled || !asrRunning;
     if (recorder.state !== "inactive") recorder.stop();
     const blob = await stopped;
     if (asrRecorder === recorder) asrRecorder = null;
+    if (wasCancelled) throw new Error("Распознавание остановлено.");
     if (!blob.size) throw new Error("Не удалось получить аудиоданные из видеоплеера.");
     return blob;
   }
@@ -398,7 +405,6 @@
           continue;
         }
 
-        const segmentStart = video.currentTime;
         let blob;
         try {
           blob = await captureAudioChunk(asrStream, 6500);
@@ -406,8 +412,8 @@
           if (!enabled || !asrRunning) break;
           throw error;
         }
-        video.pause();
         if (!enabled || !asrRunning) break;
+        video.pause();
 
         try {
           const audio = await blobToMono16k(blob);
